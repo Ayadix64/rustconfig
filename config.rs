@@ -14,7 +14,9 @@ use std::path::Path;
 pub struct ConfigContext 
 {
    pub configs: Vec<[String;2]>, 
-   pub commits: Vec<(String , u32 /*space from commit*/ , u32 /*linenum*/)> 
+   pub commits: Vec<(String , u32 /*space from commit*/ , u32 /*linenum*/)>,
+   pub confile:  String
+    
 }
 
 
@@ -23,20 +25,36 @@ pub enum ConfigErr {
     FileOpenErr,
     FileReadingErr,
     FileWritingErr,
-    SyntaxtErr
+    SyntaxtErr,
+    ConfigNotFound,
+    CommitNotFound
 }
 
+impl ConfigErr {
+    fn as_str(&self) -> &str
+    {
+        return match self {
+            ConfigErr::Ok => "Status OK.",
+            ConfigErr::FileOpenErr => "Can Not Open File",
+            ConfigErr::FileReadingErr => "Can Not Read File",
+            ConfigErr::FileWritingErr => "Can Not Write File",
+            ConfigErr::SyntaxtErr => "Config syntax Erorr",
+            ConfigErr::ConfigNotFound => "Config not found",
+            ConfigErr::CommitNotFound => "Commit Not Found"
+        }
+    }
+}
 
 impl ConfigContext {
 
     pub fn new()->Self{
-        Self{configs:Vec::new(),commits: Vec::new()}
+        Self{configs:Vec::new(),commits: Vec::new(),confile:String::new()}
     }
 
 
     pub fn OpenConfig(&mut self,file:&str) -> ConfigErr
     {
-
+        
         let mut configfile = match fs::File::open(file) {
             Ok(file)=>file , 
             Err(erorr) => {println!("[Erorr] , can-not open file \"{file}\" , {erorr:?}."); return ConfigErr::FileOpenErr;}
@@ -47,7 +65,10 @@ impl ConfigContext {
             println!("[Erorr] at reading {file} , {error:?}");
             return ConfigErr::FileReadingErr;
         };
-        
+        self.confile = String::from(file); 
+        self.configs.clear();
+        self.commits.clear();
+
         let mut syntaxterorrdetacted:bool = false;
         let mut linenum     :u32 = 0;
 
@@ -142,14 +163,15 @@ impl ConfigContext {
     }
 
 
-    pub fn GetConfig(&mut self,conf:&str) -> String
+
+    pub fn GetConfig(&mut self,conf:&str) -> Result<String,ConfigErr>
     {
-        let mut ret =String::new();
+        let mut ret :String = String::new();
         let mut found:bool = false;
         for i in 0..self.configs.len() {
             if conf.cmp(self.configs[i][0].as_str()) == Ordering::Equal
             {
-                ret = self.configs[i][1].clone(); 
+                ret = self.configs[i][1].clone();
                 found=true;
             }
 
@@ -157,8 +179,9 @@ impl ConfigContext {
         if !found
         {
             eprintln!("[ERORR] never found the config {conf}");
+            return Err(ConfigErr::ConfigNotFound);
         }
-        return  ret;
+        Ok(ret)
     }
     pub fn SetConfig(&mut self,config:&str,val:&str)
     {
@@ -187,7 +210,7 @@ impl ConfigContext {
     
 
 
-    pub fn GetComment(&mut self,line:u32) -> String
+    pub fn GetComment(&mut self,line:u32) -> Result<String,ConfigErr>
     {
         let mut ret =String::new();
         let mut found:bool = false;
@@ -200,8 +223,9 @@ impl ConfigContext {
         if !found
         {
             eprintln!("[ERORR] never found commint in the line {line}");
+            return Err(ConfigErr::CommitNotFound);
         }
-        return  ret;
+        return  Ok(ret);
     }
     pub fn SetComment(&mut self,commit:&str,line:u32 , spaces:u32)
     {
@@ -269,7 +293,7 @@ impl ConfigContext {
             
         }
         if self.commits.len() > 0  {
-            for i in (self.configs.len() as u32 ..self.commits[self.commits.len()-1].2+1)  {
+            for i in self.configs.len() as u32 ..self.commits[self.commits.len()-1].2+1  {
                 if commit < self.commits.len() && self.commits[commit].2 == i as u32 {
                     for _ in 0..self.commits[commit].1 {
                         floutdata.push(' ');
